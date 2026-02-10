@@ -1,0 +1,14 @@
+[booklooker]
+# Deinen persönlichen API Key findest du hier (Einloggen erforderlich):
+# https://www.booklooker.de/app/priv/api_key.php
+api_key = DEIN_API_KEY_HIER
+
+[paths]
+# Ordner, in dem deine Buchcover-Fotos liegen (JPG-Dateien)
+# Windows-Beispiel:  C:\Users\deinName\Pictures\Galerie
+# macOS-Beispiel:    /Users/deinName/Pictures/Galerie
+gallery_path = /Users/DEIN_BENUTZERNAME/Pictures/Galerie
+
+# Ordner, in dem die fertige Webseite gespeichert wird
+# Dieser Ordner wird dann auf deinen Webspace hochgeladen
+output_path = /Users/DEIN_BENUTZERNAME/Projects/buecherkiste/public
