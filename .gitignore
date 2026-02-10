@@ -1,0 +1,13 @@
+# Output (wird generiert, nicht versioniert)
+public/
+
+# Python
+__pycache__/
+*.pyc
+.env
+
+# macOS
+.DS_Store
+
+# Config mit API Key (NIEMALS ins Repo!)
+.booklooker-sync.ini
