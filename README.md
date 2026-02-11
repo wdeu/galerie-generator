@@ -10,7 +10,7 @@ Eine einfache Lösung für alle, die ihre Buchcover als Bildergalerie im Web zei
 
 Zunächst etwas Handarbeit:
 
-1. Du brauchst Deine Buchcover.
+1. Du brauchst Deine hochgeladenen Buchcover aus booklooker.de
 2. Du brauchst einen persönlichen API-Key (siehe unten).
 
 Das Programm erledigt dann den Rest **automatisch**:
@@ -23,19 +23,19 @@ Das Programm erledigt dann den Rest **automatisch**:
 - ✅ Funktioniert auf Desktop und Smartphone
 
 Das Ergebnis ist eine Datei (`index.html`), die du auf deinen Webspace hochlädst.
-Hast Du nicht? Dann nimm "Netlify" (kostenlos) - siehe unten Option A.
+Hast Du nicht? Dann nimm "Netlify" (kostenlos) - siehe unten "Option A".
 
 ---
 
 ## Voraussetzungen
 
-Du lädst Deine Buchcover bei [booklooker.de → Ihre angebotenen Artikel](https://www.booklooker.de/app/priv/my_overview.php) herunter. 
-Klicke ganz unten auf den Link: "Hochgeladene Bilder zum Download anfordern". 
-Eine Mail bestätigt wenig später, dass der Download bereit liegt. 
-Klicke dann auf derselben Webseite unten auf "ZIP-Datei mit hochgeladenen Bildern herunterladen".
-In Deinem Downloads-Verzeichnis liegt ein Ordner mit dem wenig schönen Namen "(Deine User-ID)-images-5cc2f422e1fA82a7ff712349d7da4569". Oder so ähnlich.
-Verschiebe (copy & paste) ALLE darin befindlichen Buchcover in Deinen Ordner /Users/deinBenutzerordnerName/Pictures/Galerie 
-Existiert dieser Ordner noch nicht, lege ihn an: Bilder/Galerie (Schiebe hier die Fotos Deiner Buchcover rein).
+*Du lädst Deine Buchcover von [booklooker.de → Ihre angebotenen Artikel](https://www.booklooker.de/app/priv/my_overview.php) herunter. 
+*Klicke ganz unten auf den Link: "Hochgeladene Bilder zum Download anfordern". 
+*Eine Mail bestätigt wenig später, dass der Download bereit liegt. 
+*Klicke dann auf derselben Webseite unten auf "ZIP-Datei mit hochgeladenen Bildern herunterladen".
+*In Deinem Downloads-Verzeichnis liegt ein Ordner mit dem wenig schönen Namen "(Deine User-ID)-images-5cc2f422e1fA82a7ff712349d7da4569". Oder so ähnlich.
+*Verschiebe (copy & paste) ALLE darin befindlichen Buchcover in Deinen Ordner /Users/deinBenutzerordnerName/Pictures/Galerie.
+*Existiert dieser Ordner noch nicht, lege ihn an: Bilder/Galerie und schiebe die Fotos Deiner Buchcover rein.*
 
 Dann:
 
@@ -45,11 +45,9 @@ Dann:
 | **Booklooker API Key** | [Persönliche Daten → API Key](https://www.booklooker.de/app/priv/api_key.php) | kostenlos |
 | Einen **Webspace** (für das Ergebnis) | z.B. Netlify (kostenlos), IONOS, Strato, ... | je nach Anbieter |
 
+
 Auf **macOS** ist Python meist schon vorinstalliert.  
 Auf **Windows** einmal von python.org herunterladen und installieren (Haken bei „Add to PATH" setzen!).
-
-API-Key: Du loggst Dich ein, gehst zu  [Persönliche Daten → Zugang zur Booklooker REST API](https://www.booklooker.de/app/priv/api_key.php) 
-Kopiere unter "Ihr persönlicher API-Key" den Zahlencode, Du brauchst ihn unten bei "Schritt 3".
 ---
 
 ## Einrichtung (einmalig, ca. 10 Minuten)
