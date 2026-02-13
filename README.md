@@ -212,4 +212,4 @@ Verbesserungsvorschläge und Fehlermeldungen gerne als [GitHub Issue](../../issu
 
 ---
 
-*Lizenz: MIT – kostenlos nutzbar und anpassbar*
+Lizenz: MIT – kostenlos nutzbar und anpassbar
