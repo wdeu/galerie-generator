@@ -47,16 +47,28 @@ api_key = DEIN_API_KEY_HIER
 
 [paths]
 gallery_path = /Users/wdeupro/Pictures/Galerie
-output_path  = /Users/wdeupro/projects/gogallery/public
+output_path  = /Users/wdeupro/Projects/galerie-generator/public
 """)
         err(f"Config erstellt → bitte ausfüllen: {CONFIG_FILE}")
 
     cfg = configparser.ConfigParser()
     cfg.read(CONFIG_FILE)
+    
+    # FTP optional laden
+    ftp = None
+    if cfg.has_section('ftp'):
+        ftp = {
+            'host':     cfg.get('ftp', 'host'),
+            'user':     cfg.get('ftp', 'user'),
+            'password': cfg.get('ftp', 'password'),
+            'remote':   cfg.get('ftp', 'remote'),
+        }
+    
     return {
         'api_key':      cfg.get('booklooker', 'api_key'),
         'gallery_path': Path(cfg.get('paths', 'gallery_path')),
         'output_path':  Path(cfg.get('paths', 'output_path')),
+        'ftp':          ftp,
     }
 
 # ============================================================
@@ -392,12 +404,11 @@ def main():
     print("═" * 56)
     ok(f"Fertig! {count} Bücher in Galerie.")
     print()
-    print(f"  📁 Output:  {cfg['output_path']}/index.html")
+    print(f"  📁 Output: {cfg['output_path']}")
     print(f"  🌐 Preview: open {cfg['output_path']}/index.html")
     print()
-    print("  Zum Upload auf IONOS:")
-    print(f"  lftp ftp://USERNAME@ftp.wdeu.de")
-    print(f"  > mirror -R {cfg['output_path']}/ /galerie/")
+    print(f"  💡 Upload: Inhalt von public/ mit Forklift nach")
+    print(f"     /galerie/buecher/ auf IONOS hochladen")
     print("═" * 56)
 
 if __name__ == "__main__":
