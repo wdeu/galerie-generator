@@ -2,7 +2,7 @@
 
 Eine einfache Lösung für alle, die ihre Buchcover als Bildergalerie im Web zeigen möchten – **immer automatisch aktuell**, ohne manuelles Pflegen.
 
-**→ [Live-Demo ansehen](https://wdeu.de/galerie)**
+**→ [Live-Demo ansehen](https://wdeu.de/galerie/buecher)**
 
 ---
 
@@ -29,13 +29,13 @@ Hast Du nicht? Dann nimm "Netlify" (kostenlos) - siehe unten "Option A".
 
 ## Voraussetzungen
 
-*Du lädst Deine Buchcover von [booklooker.de → Ihre angebotenen Artikel](https://www.booklooker.de/app/priv/my_overview.php) herunter. 
-*Klicke ganz unten auf den Link: "Hochgeladene Bilder zum Download anfordern". 
-*Eine Mail bestätigt wenig später, dass der Download bereit liegt. 
-*Klicke dann auf derselben Webseite unten auf "ZIP-Datei mit hochgeladenen Bildern herunterladen".
-*In Deinem Downloads-Verzeichnis liegt ein Ordner mit dem wenig schönen Namen "(Deine User-ID)-images-5cc2f422e1fA82a7ff712349d7da4569". Oder so ähnlich.
-*Verschiebe (copy & paste) ALLE darin befindlichen Buchcover in Deinen Ordner /Users/deinBenutzerordnerName/Pictures/Galerie.
-*Existiert dieser Ordner noch nicht, lege ihn an: Bilder/Galerie und schiebe die Fotos Deiner Buchcover rein.*
+Du lädst Deine Buchcover von [booklooker.de → Ihre angebotenen Artikel](https://www.booklooker.de/app/priv/my_overview.php) herunter.
+Klicke ganz unten auf den Link: "Hochgeladene Bilder zum Download anfordern".
+Eine Mail bestätigt wenig später, dass der Download bereit liegt.
+Klicke dann auf derselben Webseite unten auf "ZIP-Datei mit hochgeladenen Bildern herunterladen".
+In Deinem Downloads-Verzeichnis liegt ein Ordner mit dem wenig schönen Namen "(Deine User-ID)-images-5cc2f422e1fA82a7ff712349d7da4569". Oder so ähnlich.
+Verschiebe (copy & paste) ALLE darin befindlichen Buchcover in Deinen Ordner /Users/deinBenutzerordnerName/Pictures/Galerie.
+Existiert dieser Ordner noch nicht, lege ihn an: Bilder/Galerie und schiebe die Fotos Deiner Buchcover rein.
 
 Dann:
 
@@ -45,9 +45,8 @@ Dann:
 | **Booklooker API Key** | [Persönliche Daten → API Key](https://www.booklooker.de/app/priv/api_key.php) | kostenlos |
 | Einen **Webspace** (für das Ergebnis) | z.B. Netlify (kostenlos), IONOS, Strato, ... | je nach Anbieter |
 
-
-Auf **macOS** ist Python meist schon vorinstalliert.  
-Auf **Windows** einmal von python.org herunterladen und installieren (Haken bei „Add to PATH" setzen!).
+Auf macOS ist Python meist schon vorinstalliert.
+Auf Windows einmal von python.org herunterladen und installieren (Haken bei „Add to PATH" setzen!).
 ---
 
 ## Einrichtung (einmalig, ca. 10 Minuten)
@@ -88,8 +87,8 @@ output_path  = /Users/deinName/Documents/buecherkiste/public   ← Ausgabe-Ordne
 
 **Speichere die Datei als `.booklooker-sync.ini`** (ohne `.example` am Ende)  
 im Benutzer-Heimordner:
-- **macOS/Linux:** `/Users/deinName/` → Dateiname: `.booklooker-sync.ini`
-- **Windows:** `C:\Users\deinName\` → Dateiname: `.booklooker-sync.ini`
+- macOS/Linux: `/Users/deinName/` → Dateiname: `.booklooker-sync.ini`
+- Windows: `C:\Users\deinName\` → Dateiname: `.booklooker-sync.ini`
 
 > 💡 **API Key:** Den findest du nach dem Einloggen unter  
 > [booklooker.de → Persönliche Daten → API Key](https://www.booklooker.de/app/priv/api_key.php)
