@@ -121,7 +121,7 @@ def cleanup(gallery_path, active_articles):
     sold_dir.mkdir(exist_ok=True)
 
     moved = cleaned = 0
-    images = sorted(gallery_path.glob("*.jpg"), key=lambda f: f.name.upper())
+    images = sorted(gallery_path.glob("*.jpg"), key=lambda f: f.name.upper(), reverse=True)
 
     log(f"Bereinige {len(images)} Bilder...")
 
@@ -149,7 +149,7 @@ def cleanup(gallery_path, active_articles):
 # HTML GENERIEREN
 # ============================================================
 def generate_html(gallery_path, output_path):
-    images = sorted(gallery_path.glob("*.jpg"), key=lambda f: f.name.upper())
+    images = sorted(gallery_path.glob("*.jpg"), key=lambda f: f.name.upper(), reverse=True)
     ok(f"Generiere Galerie mit {len(images)} Bildern...")
 
     # Baue Bild-Tags
