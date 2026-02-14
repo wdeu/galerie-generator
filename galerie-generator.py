@@ -327,7 +327,7 @@ def generate_html(gallery_path, output_path):
   <div class="sub">wdeu bei Booklooker.de</div>
   <div class="hint">Artikelnummer steht unter jedem Cover</div>
   <a class="bl-link"
-     href="https://www.booklooker.de/Bücher/Angebote/showAll/uID=7833559"
+     href="https://www.booklooker.de/wdeu/B%C3%BCcher/Angebote/?sortOrder=offerDate&sortDirection=desc"
      target="_blank">zu Booklooker.de &rsaquo;&rsaquo;</a>
   <div class="stats">{count} Bücher · Stand: {now}</div>
 </header>
