@@ -41,20 +41,48 @@ def err(msg):     print(f"{C.RED}✗{C.NC}  {msg}"); sys.exit(1)
 # CONFIG LADEN
 # ============================================================
 def load_config():
+    # Plattformübergreifende Defaults
+    DOWNLOADS    = Path.home() / "Downloads"
+    DEFAULT_IN   = DOWNLOADS
+    DEFAULT_OUT  = DOWNLOADS / "galerie-output"
+
     if not os.path.exists(CONFIG_FILE):
-        Path(CONFIG_FILE).write_text("""[booklooker]
+        Path(CONFIG_FILE).write_text(f"""[booklooker]
 api_key = DEIN_API_KEY_HIER
 
-[paths]
-gallery_path = /Users/wdeupro/Pictures/Galerie
-output_path  = /Users/wdeupro/Projects/galerie-generator/public
+# Bestellnummer-Präfixe deiner Booklooker-Artikel (kommagetrennt).
+# BN  = Einzeltitel-Inserat
+# BLX = CSV-Massenupload
+# Booklooker erlaubt eigene Präfixe – trage hier alle ein die du verwendest.
+# Beispiel: order_prefix = BN,BLX,MGB
+order_prefix = BN,BLX
+
+# [paths] ist optional – ohne diesen Abschnitt werden die Defaults verwendet:
+#   gallery_path = {DEFAULT_IN}   (BL-Bilder aus Downloads)
+#   output_path  = {DEFAULT_OUT}  (fertige Galerie)
+#
+# Nur eintragen wenn du andere Ordner möchtest:
+# [paths]
+# gallery_path = {DEFAULT_IN}
+# output_path  = {DEFAULT_OUT}
+
+# Optional: WordPress-Seite mit Booklooker-Plugin für Direktlinks.
+# Wenn eingetragen, wird jedes Cover direkt mit dem Einzelartikel verknüpft.
+# Voraussetzung: WordPress + wordpress-booklooker-bot Plugin
+#
+# [wordpress]
+# url = https://deine-domain.de/deine-buchseite
 """)
-        err(f"Config erstellt → bitte ausfüllen: {CONFIG_FILE}")
+        err(f"Config erstellt → bitte API-Key eintragen: {CONFIG_FILE}")
 
     cfg = configparser.ConfigParser()
     cfg.read(CONFIG_FILE)
-    
-    # FTP optional laden
+
+    # Pfade: Config überschreibt Default
+    gallery_path = Path(cfg.get('paths', 'gallery_path', fallback=str(DEFAULT_IN)))
+    output_path  = Path(cfg.get('paths', 'output_path',  fallback=str(DEFAULT_OUT)))
+
+    # FTP optional
     ftp = None
     if cfg.has_section('ftp'):
         ftp = {
@@ -63,18 +91,33 @@ output_path  = /Users/wdeupro/Projects/galerie-generator/public
             'password': cfg.get('ftp', 'password'),
             'remote':   cfg.get('ftp', 'remote'),
         }
-    
+
+    # WordPress optional
+    wp_url = None
+    if cfg.has_section('wordpress'):
+        wp_url = cfg.get('wordpress', 'url', fallback=None)
+
+    # Bestellnummer-Präfixe
+    raw_prefix   = cfg.get('booklooker', 'order_prefix', fallback='BN,BLX')
+    order_prefix = [p.strip().upper() for p in raw_prefix.split(',') if p.strip()]
+
     return {
         'api_key':      cfg.get('booklooker', 'api_key'),
-        'gallery_path': Path(cfg.get('paths', 'gallery_path')),
-        'output_path':  Path(cfg.get('paths', 'output_path')),
+        'gallery_path': gallery_path,
+        'output_path':  output_path,
         'ftp':          ftp,
+        'wp_url':       wp_url,
+        'order_prefix': order_prefix,
     }
 
 # ============================================================
 # BOOKLOOKER API
 # ============================================================
-def get_active_articles(api_key):
+def get_article_data(api_key):
+    """Holt orderNo, ISBN und Preis pro Artikel. Gibt zurück:
+       articles_set  – set aller orderNos (für cleanup)
+       article_info  – dict: orderNo → {'isbn': ..., 'price': ...}
+    """
     log("Authentifiziere bei Booklooker...")
     r = requests.post(
         "https://api.booklooker.de/2.0/authenticate",
@@ -86,7 +129,8 @@ def get_active_articles(api_key):
     token = data['returnValue']
     ok(f"Token: {token[:20]}...")
 
-    log("Hole Artikelliste...")
+    # Aufruf 1: orderNo-Liste
+    log("Hole Artikelliste (orderNo)...")
     r = requests.get(
         "https://api.booklooker.de/2.0/article_list",
         params={'token': token, 'field': 'orderNo'}, timeout=30
@@ -94,41 +138,104 @@ def get_active_articles(api_key):
     data = r.json()
     if data['status'] != 'OK':
         err(f"Artikelliste fehlgeschlagen: {data['returnValue']}")
+    order_nos = [a.strip().upper() for a in data['returnValue'].strip().split('\n') if a.strip()]
+    ok(f"Aktive Artikel: {len(order_nos)}")
 
-    articles = {
-        a.strip().upper()
-        for a in data['returnValue'].strip().split('\n')
-        if a.strip()
-    }
-    ok(f"Aktive Artikel: {len(articles)}")
-    return articles
+    # Aufruf 2: ISBN + Preis
+    log("Hole ISBN + Preise...")
+    r = requests.get(
+        "https://api.booklooker.de/2.0/article_list",
+        params={'token': token, 'field': 'isbn', 'showPrice': 1, 'mediaType': 0}, timeout=30
+    )
+    data = r.json()
+    isbn_lines = []
+    if data['status'] == 'OK' and data['returnValue'].strip():
+        isbn_lines = [l.strip() for l in data['returnValue'].strip().split('\n') if l.strip()]
+
+    # Zusammenführen (gleiche Reihenfolge laut API-Doku)
+    article_info = {}
+    for i, order_no in enumerate(order_nos):
+        isbn  = ''
+        price = ''
+        if i < len(isbn_lines):
+            parts = isbn_lines[i].split('\t')
+            isbn  = parts[0].strip()
+            price = parts[1].strip() if len(parts) > 1 else ''
+        article_info[order_no] = {'isbn': isbn, 'price': price}
+
+    return set(order_nos), article_info
+
+
+# ============================================================
+# WP-SEITE PARSEN → ISBN → detail-URL Mapping
+# ============================================================
+def get_wp_links(wp_url=None):
+    """Liest WP-Seite und baut dict: isbn → booklooker-detail-URL.
+    Gibt {} zurück wenn wp_url nicht konfiguriert oder nicht erreichbar."""
+    if not wp_url:
+        log("Kein [wordpress] in Config → Cover-Links zeigen auf Händlerkatalog")
+        return {}
+
+    log(f"Lese WP-Seite: {wp_url} ...")
+    try:
+        r = requests.get(wp_url, timeout=20)
+        r.raise_for_status()
+    except Exception as e:
+        warn(f"WP-Seite nicht erreichbar: {e} → Cover-Links fallen weg")
+        return {}
+
+    # onClick="window.open('https://www.booklooker.de/app/detail.php?id=...')"
+    detail_urls = re.findall(
+        r"onClick=\"window\.open\('(https://www\.booklooker\.de/app/detail\.php\?id=[^']+)'\)\"",
+        r.text
+    )
+    # ISBN aus dem HTML: ISBN: 9783593353838
+    isbns = re.findall(r'ISBN:\s*(\d{10,13})', r.text)
+
+    mapping = {}
+    for isbn, url in zip(isbns, detail_urls):
+        mapping[isbn] = url
+
+    ok(f"WP-Links: {len(mapping)} ISBN→URL Paare gefunden")
+    return mapping
 
 # ============================================================
 # BILDER BEREINIGEN
 # ============================================================
-def is_valid(filename):
-    """Prüfe ob Dateiname gültig ist (kein _2, _3 Suffix)"""
+def is_valid(filename, order_prefix=None):
+    """Prüfe ob Dateiname gültig ist (kein _2, _3 Suffix, passt zu Präfix-Liste)"""
+    if order_prefix is None:
+        order_prefix = ['BN', 'BLX']
     stem = Path(filename).stem
+    # Mehrfachbild-Suffix (_2, _3 ...) → ungültig
     if re.search(r'_\d+$', stem):
         return False, None
-    m = re.match(r'^(BLX|BN)\d+', stem, re.IGNORECASE)
+    # Präfix-Pattern dynamisch aufbauen
+    pattern = r'^(' + '|'.join(re.escape(p) for p in order_prefix) + r')\d+'
+    m = re.match(pattern, stem, re.IGNORECASE)
     if m:
-        return True, m.group(0).upper()
+        return True, stem.upper()
     return False, None
 
-def cleanup(gallery_path, active_articles):
+def cleanup(gallery_path, active_articles, order_prefix=None):
     sold_dir = gallery_path / "Verkauft"
     sold_dir.mkdir(exist_ok=True)
 
-    moved = cleaned = 0
+    moved = cleaned = skipped = 0
     images = sorted(gallery_path.glob("*.jpg"), key=lambda f: f.name.upper(), reverse=True)
 
-    log(f"Bereinige {len(images)} Bilder...")
+    log(f"Bereinige {len(images)} JPGs in {gallery_path} ...")
+    log(f"Erkannte Präfixe: {', '.join(order_prefix or ['BN','BLX'])}")
 
     for img in images:
-        valid, article_no = is_valid(img.name)
+        valid, article_no = is_valid(img.name, order_prefix)
 
         if not valid:
+            # Kein BL-Bild → unangetastet lassen
+            skipped += 1
+            continue
+
+        if re.search(r'_\d+$', Path(img.name).stem):
             warn(f"Lösche Mehrfachbild: {img.name}")
             img.unlink()
             cleaned += 1
@@ -142,26 +249,56 @@ def cleanup(gallery_path, active_articles):
             shutil.move(str(img), str(target))
             moved += 1
 
-    ok(f"Bereinigt: {cleaned} Mehrfachbilder gelöscht, {moved} verkaufte verschoben")
+    ok(f"Bereinigt: {cleaned} Mehrfachbilder gelöscht, {moved} verkaufte verschoben, {skipped} Nicht-BL-Dateien ignoriert")
     return moved, cleaned
 
 # ============================================================
 # HTML GENERIEREN
 # ============================================================
-def generate_html(gallery_path, output_path):
-    images = sorted(gallery_path.glob("*.jpg"), key=lambda f: f.name.upper(), reverse=True)
+def generate_html(gallery_path, output_path, article_info=None, wp_links=None, order_prefix=None):
+    if order_prefix is None:
+        order_prefix = ['BN', 'BLX']
+    images = sorted(
+        [f for f in gallery_path.glob("*.jpg") if is_valid(f.name, order_prefix)[0]],
+        key=lambda f: f.name.upper(), reverse=True
+    )
     ok(f"Generiere Galerie mit {len(images)} Bildern...")
+
+    article_info = article_info or {}
+    wp_links     = wp_links     or {}
+
+    # Fallback-URL wenn kein Direktlink verfügbar
+    FALLBACK_URL = "https://www.booklooker.de/wdeu/B%C3%BCcher/Angebote/?sortOrder=offerDate&sortDirection=desc"
 
     # Baue Bild-Tags
     items_html = ""
     for img in images:
-        stem   = img.stem.upper()          # z.B. BN00561
-        fname  = img.name.lower()          # z.B. bn00561.jpg
+        stem  = img.stem.upper()   # z.B. BN00561
+        fname = img.name.lower()   # z.B. bn00561.jpg
+
+        info  = article_info.get(stem, {})
+        isbn  = info.get('isbn', '')
+        price = info.get('price', '')
+
+        # Detail-Link: WP-Mapping per ISBN, sonst Fallback
+        href  = wp_links.get(isbn, FALLBACK_URL)
+
+        # Preis-Overlay nur wenn Preis bekannt
+        price_html = ""
+        if price:
+            try:
+                price_fmt = f"{float(price):.2f} €".replace('.', ',')
+                price_html = f'<div class="price">{price_fmt}</div>'
+            except ValueError:
+                pass
 
         items_html += f"""
     <div class="item">
-      <a href="images/{fname}" data-lightbox="galerie" data-title="{stem}">
-        <img src="images/{fname}" alt="{stem}" title="{stem}" loading="lazy">
+      <a href="{href}" target="_blank" rel="noopener" title="Bei Booklooker kaufen">
+        <div class="thumb-wrap">
+          <img src="images/{fname}" alt="{stem}" title="{stem}" loading="lazy">
+          {price_html}
+        </div>
       </a>
       <div class="label">{stem}</div>
     </div>"""
@@ -175,10 +312,6 @@ def generate_html(gallery_path, output_path):
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bücherkiste – wdeu bei Booklooker.de</title>
-
-  <!-- Lightbox2 -->
-  <link rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/lightbox2/2.11.4/css/lightbox.min.css">
 
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;700&display=swap"
@@ -295,6 +428,29 @@ def generate_html(gallery_path, output_path):
       object-fit: cover;
     }}
 
+    /* ── Thumb-Wrapper für Preis-Overlay ── */
+    .thumb-wrap {{
+      position: relative;
+      width: 100%;
+    }}
+
+    /* ── Preis-Overlay ── */
+    .price {{
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(180, 30, 30, 0.82);
+      color: #fff;
+      font-family: 'Raleway', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      text-align: center;
+      padding: 4px 2px;
+      letter-spacing: 0.03em;
+      pointer-events: none;
+    }}
+
     /* ── Artikelnummer-Label ── */
     .label {{
       font-family: 'Courier New', monospace;
@@ -325,7 +481,7 @@ def generate_html(gallery_path, output_path):
 <header>
   <h1>Bücherkiste</h1>
   <div class="sub">wdeu bei Booklooker.de</div>
-  <div class="hint">Artikelnummer steht unter jedem Cover</div>
+  <div class="hint">Klick aufs Cover → direkt zu Booklooker</div>
   <a class="bl-link"
      href="https://www.booklooker.de/wdeu/B%C3%BCcher/Angebote/?sortOrder=offerDate&sortDirection=desc"
      target="_blank">zu Booklooker.de &rsaquo;&rsaquo;</a>
@@ -340,18 +496,6 @@ def generate_html(gallery_path, output_path):
 <footer>
   Fachbücher Psychologie &amp; Sozialwissenschaften · wdeu bei Booklooker.de
 </footer>
-
-<!-- Lightbox2 -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lightbox2/2.11.4/js/lightbox.min.js"></script>
-<script>
-  lightbox.option({{
-    'resizeDuration': 200,
-    'wrapAround': true,
-    'albumLabel': 'Bild %1 von %2',
-    'fadeDuration': 150
-  }});
-</script>
 
 </body>
 </html>"""
@@ -389,26 +533,31 @@ def main():
 
     cfg = load_config()
 
-    # 1. API
-    active = get_active_articles(cfg['api_key'])
+    # 1. API: orderNo + ISBN + Preis
+    active, article_info = get_article_data(cfg['api_key'])
 
-    # 2. Bilder bereinigen
+    # 2. WP-Seite: ISBN → detail-URL Mapping
     print()
-    cleanup(cfg['gallery_path'], active)
+    wp_links = get_wp_links(cfg.get('wp_url'))
 
-    # 3. Galerie generieren
+    # 3. Bilder bereinigen
     print()
-    count = generate_html(cfg['gallery_path'], cfg['output_path'])
+    cleanup(cfg['gallery_path'], active, cfg['order_prefix'])
+
+    # 4. Galerie generieren
+    print()
+    count = generate_html(cfg['gallery_path'], cfg['output_path'], article_info, wp_links, cfg['order_prefix'])
 
     print()
     print("═" * 56)
     ok(f"Fertig! {count} Bücher in Galerie.")
     print()
-    print(f"  📁 Output: {cfg['output_path']}")
-    print(f"  🌐 Preview: open {cfg['output_path']}/index.html")
+    print(f"  📥 Quelle:  {cfg['gallery_path']}")
+    print(f"  📁 Output:  {cfg['output_path']}")
+    print(f"  🌐 Preview: open \"{cfg['output_path']}/index.html\"")
     print()
-    print(f"  💡 Upload: Inhalt von public/ mit Forklift nach")
-    print(f"     /galerie/buecher/ auf IONOS hochladen")
+    print(f"  💡 Upload: Inhalt von galerie-output/ mit Forklift")
+    print(f"     nach /buecher/ auf IONOS hochladen")
     print("═" * 56)
 
 if __name__ == "__main__":

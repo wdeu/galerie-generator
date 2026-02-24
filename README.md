@@ -1,215 +1,147 @@
-# 📚 Bücherkiste – Automatische Galerie für Booklooker-Verkäufer
+# 📚 Booklooker Galerie Generator
 
-Eine einfache Lösung für alle, die ihre Buchcover als Bildergalerie im Web zeigen möchten – **immer automatisch aktuell**, ohne manuelles Pflegen.
+Automatische Buchcover-Galerie für Booklooker-Verkäufer.
 
-**→ [Live-Demo ansehen](https://wdeu.de/galerie/buecher)**
+Das Script holt deine aktiven Artikel per Booklooker-API, bereinigt deinen
+Download-Ordner und generiert eine fertige, hochladbare `index.html` mit
+Cover-Grid, Preis-Overlay und direkten Links zu Booklooker.
 
----
-
-## Was macht dieses Programm?
-
-Zunächst etwas Handarbeit:
-
-1. Du brauchst Deine hochgeladenen Buchcover aus booklooker.de
-2. Du brauchst einen persönlichen API-Key (siehe unten).
-
-Das Programm erledigt dann den Rest **automatisch**:
-
-- ✅ Fragt deine aktuelle Artikelliste bei Booklooker ab
-- ✅ Entfernt Mehrfachfotos vom selben Buch (`_2.jpg`, `_3.jpg` usw.)
-- ✅ Verschiebt Fotos von **bereits verkauften** Büchern in einen separaten Ordner
-- ✅ Erstellt eine fertige Webseite mit allen aktuellen Covers
-- ✅ Zeigt die Bestellnummer unter jedem Buchcover an
-- ✅ Funktioniert auf Desktop und Smartphone
-
-Das Ergebnis ist eine Datei (`index.html`), die du auf deinen Webspace hochlädst.
-Hast Du nicht? Dann nimm "Netlify" (kostenlos) - siehe unten "Option A".
+**Live-Beispiel:** [galerie.wdeu.de](https://galerie.wdeu.de)
 
 ---
 
 ## Voraussetzungen
 
-Du lädst Deine Buchcover von [booklooker.de → Ihre angebotenen Artikel](https://www.booklooker.de/app/priv/my_overview.php) herunter.
-Klicke ganz unten auf den Link: "Hochgeladene Bilder zum Download anfordern".
-Eine Mail bestätigt wenig später, dass der Download bereit liegt.
-Klicke dann auf derselben Webseite unten auf "ZIP-Datei mit hochgeladenen Bildern herunterladen".
-In Deinem Downloads-Verzeichnis liegt ein Ordner mit dem wenig schönen Namen "(Deine User-ID)-images-5cc2f422e1fA82a7ff712349d7da4569". Oder so ähnlich.
-Verschiebe (copy & paste) ALLE darin befindlichen Buchcover in Deinen Ordner /Users/deinBenutzerordnerName/Pictures/Galerie.
-Existiert dieser Ordner noch nicht, lege ihn an: Bilder/Galerie und schiebe die Fotos Deiner Buchcover rein.
+- Python 3.8 oder neuer
+- `pip install requests --break-system-packages`
+- Booklooker-Account mit API-Key
+  ([hier abrufen](https://www.booklooker.de/app/priv/api_key.php))
 
-Dann:
-
-| Was | Wo herunterladen | Kosten |
-|-----|-----------------|--------|
-| **Python 3** | https://www.python.org/downloads/ | kostenlos |
-| **Booklooker API Key** | [Persönliche Daten → API Key](https://www.booklooker.de/app/priv/api_key.php) | kostenlos |
-| Einen **Webspace** (für das Ergebnis) | z.B. Netlify (kostenlos), IONOS, Strato, ... | je nach Anbieter |
-
-Auf macOS ist Python meist schon vorinstalliert.
-Auf Windows einmal von python.org herunterladen und installieren (Haken bei „Add to PATH" setzen!).
 ---
 
-## Einrichtung (einmalig, ca. 10 Minuten)
+## Installation
 
-### Schritt 1 – Programm herunterladen
-
-Klicke oben rechts auf dieser Seite auf **`Code` → `Download ZIP`**.  
-Entpacke den ZIP-Ordner an einen Ort deiner Wahl, z.B. `Dokumente/buecherkiste`.
-
-### Schritt 2 – Python-Paket installieren
-
-Öffne das Terminal (macOS) bzw. die Eingabeaufforderung (Windows) und tippe:
-
-```
-pip3 install requests
+```bash
+git clone https://github.com/wdeu/galerie-generator.git
+cd galerie-generator
+pip install requests --break-system-packages
+chmod +x galerie-generator.py
 ```
 
-Auf Windows eventuell:
-```
-pip install requests
-```
+---
 
-### Schritt 3 – Konfiguration einrichten
+## Konfiguration
 
-Öffne die Datei `.booklooker-sync.ini.example` mit einem Texteditor  
-(z.B. Editor/Notepad auf Windows, TextEdit auf macOS).
-
-Trage deine Daten ein:
+Beim ersten Start wird `~/.booklooker-sync.ini` automatisch angelegt:
 
 ```ini
 [booklooker]
-api_key = abc123xyz...   ← deinen echten API Key hier eintragen
+api_key = DEIN_API_KEY_HIER
 
-[paths]
-gallery_path = /Users/deinName/Pictures/Galerie   ← Ordner mit deinen Buchfotos
-output_path  = /Users/deinName/Documents/buecherkiste/public   ← Ausgabe-Ordner
+# Bestellnummer-Präfixe deiner Booklooker-Artikel (kommagetrennt).
+# BN  = Einzeltitel-Inserat
+# BLX = CSV-Massenupload
+# Booklooker erlaubt eigene Präfixe – trage hier alle ein die du verwendest.
+# Beispiel: order_prefix = BN,BLX,MGB
+order_prefix = BN,BLX
+
+# [paths] ist optional.
+# Standard: ~/Downloads als Quelle, ~/Downloads/galerie-output als Ziel.
+# Nur eintragen wenn du andere Ordner möchtest:
+# [paths]
+# gallery_path = /Users/DEINNAME/Pictures/Galerie
+# output_path  = /Users/DEINNAME/Projects/galerie-output
+
+# Optional: WordPress + Booklooker-Plugin für Direktlinks pro Buch.
+# Ohne diesen Abschnitt zeigen alle Cover-Klicks auf deinen Händlerkatalog.
+# [wordpress]
+# url = https://deine-domain.de/deine-buchseite
 ```
 
-**Speichere die Datei als `.booklooker-sync.ini`** (ohne `.example` am Ende)  
-im Benutzer-Heimordner:
-- macOS/Linux: `/Users/deinName/` → Dateiname: `.booklooker-sync.ini`
-- Windows: `C:\Users\deinName\` → Dateiname: `.booklooker-sync.ini`
-
-> 💡 **API Key:** Den findest du nach dem Einloggen unter  
-> [booklooker.de → Persönliche Daten → API Key](https://www.booklooker.de/app/priv/api_key.php)
-
-### Schritt 4 – Buchfotos vorbereiten
-
-Lege alle Buchcover-Fotos in den Ordner, den du unter `gallery_path` eingetragen hast.
-
-**Wichtig:** Die Dateinamen müssen der Booklooker-Bestellnummer entsprechen:
+Öffnen mit:
+```bash
+open ~/.booklooker-sync.ini
 ```
-✅ bn00561.jpg     (passt – wird angezeigt)
-✅ BLX0040.jpg     (passt – Groß/Kleinschreibung egal)
-✅ blx0040.jpg     (passt)
-❌ blx0040_2.jpg   (wird automatisch gelöscht – Mehrfachfoto)
-❌ IMG_1234.jpg    (wird ignoriert – kein Booklooker-Format)
-```
+
+### Bestellnummer-Präfixe
+
+Booklooker vergibt Bestellnummern nach einem Muster, das vom Upload-Weg
+abhängt (Einzelinserat, CSV-Upload o.ä.). Schau in deinen Booklooker-Bestand
+und trage alle Präfixe ein die dort vorkommen. Standardmäßig sind `BN` und
+`BLX` vorbelegt.
 
 ---
 
-## Galerie erstellen
+## Workflow
 
-### macOS / Linux
+### 1. Cover-Bilder herunterladen
 
-Öffne das Terminal, wechsle in den Programm-Ordner und starte:
+Logge dich bei Booklooker ein, fordere den Bilder-Download an, warte auf die
+Mail mit dem Download-Link und lade die ZIP-Datei herunter. macOS entpackt
+sie automatisch in `~/Downloads`.
+
+### 2. Generator starten
 
 ```bash
-cd ~/Documents/buecherkiste
 ./galerie-generator.py
 ```
 
-### Windows
+Das Script:
+- Holt deine aktiven Artikel per API (orderNo, ISBN, Preis)
+- Liest optional deine WordPress-Seite für Direktlinks
+- Bereinigt `~/Downloads`: Mehrfachbilder (z.B. `BN00322 2.jpg`) werden
+  ignoriert, verkaufte Bücher wandern nach `~/Downloads/Verkauft/`,
+  alle anderen Dateien werden **nicht** angetastet
+- Generiert `~/Downloads/galerie-output/index.html` mit fertigem Cover-Grid
 
-Doppelklick auf `galerie-generator.py`  
-— oder im Terminal:
+### 3. Hochladen
 
-```
-python galerie-generator.py
-```
-
-Das Programm zeigt dir dann seinen Fortschritt:
-
-```
-════════════════════════════════════════════════════════
-  📚 Booklooker Galerie Generator
-════════════════════════════════════════════════════════
-
-✓ Token: d1985eb547a968...
-✓ Aktive Artikel: 212
-⚠  Lösche Mehrfachbild: blx0040_2.jpg
-⚠  Verschiebe verkauft: bn00305.jpg
-✓ Bereinigt: 8 Mehrfachbilder gelöscht, 5 verkaufte verschoben
-✓ Galerie mit 207 Büchern generiert
-
-════════════════════════════════════════════════════════
-✓ Fertig! 207 Bücher in Galerie.
-
-  📁 Output:  .../public/index.html
-════════════════════════════════════════════════════════
-```
+Lade den Inhalt von `~/Downloads/galerie-output/` per FTP/SFTP auf deinen
+Webspace hoch. Mit [Forklift](https://binarynights.com) oder FileZilla.
 
 ---
 
-## Ergebnis online stellen
+## Funktionen
 
-Im Ordner `public/` liegen jetzt:
+| Feature | Beschreibung |
+|---|---|
+| **Preis-Overlay** | Roter Preisbalken am unteren Coverrand, direkt aus der API |
+| **Direktlinks** | Cover-Klick → Einzelartikel bei Booklooker (erfordert WordPress-Option) |
+| **Fallback-Link** | Ohne WordPress: Klick → dein Händlerkatalog nach Datum sortiert |
+| **Verkauft-Ordner** | Verkaufte Bücher landen in `~/Downloads/Verkauft/` |
+| **Nicht-BL-Dateien** | Andere JPGs im Downloads-Ordner werden ignoriert |
+| **Responsive Grid** | 1–3 Spalten je nach Bildschirmbreite, Mobile-optimiert |
+
+---
+
+## Optionale WordPress-Integration
+
+Wenn du WordPress mit dem Plugin
+[wordpress-booklooker-bot](https://wordpress.org/plugins/wordpress-booklooker-bot/)
+betreibst, kann der Generator die dort generierten Direktlinks auslesen.
+
+Trage in der INI ein:
+
+```ini
+[wordpress]
+url = https://deine-domain.de/deine-buchseite
 ```
-public/
-├── index.html        ← die fertige Webseite
-└── images/           ← alle aktuellen Buchcover
-    ├── bn00561.jpg
-    ├── blx0001.jpg
-    └── ...
-```
 
-### Option A: Netlify (kostenlos, empfohlen für Einsteiger)
-
-1. Kostenlos registrieren auf [netlify.com](https://www.netlify.com)
-2. Den `public/`-Ordner per **Drag & Drop** auf das Netlify-Dashboard ziehen
-3. Fertig – Netlify gibt dir eine URL wie `https://deinname.netlify.app`
-
-Beim nächsten Update: einfach wieder den `public/`-Ordner hochziehen.
-
-### Option B: Eigener Webspace (IONOS, Strato, All-Inkl. etc.)
-
-Verbinde dich per FTP mit deinem Webspace (z.B. mit [FileZilla](https://filezilla-project.org/))  
-und lade den Inhalt des `public/`-Ordners in dein gewünschtes Verzeichnis hoch.
+Der Generator parst die Seite beim Start und verknüpft jeden Cover-Klick
+direkt mit dem kaufbaren Einzelartikel bei Booklooker. Ist die Seite nicht
+erreichbar, greift automatisch der Fallback-Link — kein Absturz.
 
 ---
 
-## Galerie aktuell halten
+## Automatisierung mit Raycast
 
-Führe das Programm einfach **jedes Mal aus**, wenn du neue Bücher eingestellt  
-oder Bücher verkauft hast. Es dauert nur wenige Sekunden.
-
----
-
-## Häufige Fragen
-
-**Meine verkauften Bücher verschwinden nicht sofort.**  
-Booklooker aktualisiert die Artikelliste mit ca. 1–2 Stunden Verzögerung nach dem Verkauf. Einfach etwas später nochmal das Programm starten.
-
-**Das Programm findet meinen API Key nicht.**  
-Prüfe, ob die Datei `.booklooker-sync.ini` (mit Punkt am Anfang!) wirklich im  
-Heimordner liegt und korrekt benannt ist. Unter Windows zeigt der Explorer  
-Dateien mit Punkt am Anfang manchmal nicht an — im Editor → Datei öffnen → alle Dateien anzeigen.
-
-**`pip3 install requests` schlägt fehl.**  
-Versuche `pip install requests` (ohne die 3). Falls das auch nicht klappt:  
-`python3 -m pip install requests` (macOS/Linux) oder `python -m pip install requests` (Windows).
-
-**Ich habe keine eigene Website.**  
-Netlify ist kostenlos und braucht keine technischen Kenntnisse – einfach  
-den `public/`-Ordner per Drag & Drop hochladen.
+Das Script lässt sich als
+[Raycast Script Command](https://github.com/raycast/script-commands)
+einbinden. Beispiel-Script `ionos-sync.sh` für den anschließenden Upload
+liegt im Repo.
 
 ---
 
-## Danke & Mitmachen
+## Lizenz
 
-Entstanden im [Booklooker-Forum](https://www.booklookerforum.de/viewtopic.php?t=32241).  
-Verbesserungsvorschläge und Fehlermeldungen gerne als [GitHub Issue](../../issues) oder im Forum.
-
----
-
-Lizenz: MIT – kostenlos nutzbar und anpassbar
+MIT — frei verwendbar, veränderbar, weiterggebbar.
