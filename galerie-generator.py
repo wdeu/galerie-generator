@@ -66,12 +66,14 @@ order_prefix = BN,BLX
 # gallery_path = {DEFAULT_IN}
 # output_path  = {DEFAULT_OUT}
 
-# Optional: WordPress-Seite mit Booklooker-Plugin für Direktlinks.
-# Wenn eingetragen, wird jedes Cover direkt mit dem Einzelartikel verknüpft.
+# Optional: WordPress-Seite mit Booklooker-Plugin für Direktlinks + Tooltips.
 # Voraussetzung: WordPress + wordpress-booklooker-bot Plugin
+# wordpress_mode = yes  → WP-Seite scrapen (Links + Beschreibungs-Tooltips)
+# wordpress_mode = no   → nur Booklooker-API (Preise, kein Tooltip, kein Direktlink)
 #
 # [wordpress]
 # url = https://deine-domain.de/deine-buchseite
+# wordpress_mode = yes
 """)
         err(f"Config erstellt → bitte API-Key eintragen: {CONFIG_FILE}")
 
@@ -93,9 +95,11 @@ order_prefix = BN,BLX
         }
 
     # WordPress optional
-    wp_url = None
+    wp_url  = None
+    wp_mode = False
     if cfg.has_section('wordpress'):
-        wp_url = cfg.get('wordpress', 'url', fallback=None)
+        wp_url  = cfg.get('wordpress', 'url', fallback=None)
+        wp_mode = cfg.get('wordpress', 'wordpress_mode', fallback='yes').strip().lower() == 'yes'
 
     # Bestellnummer-Präfixe
     raw_prefix   = cfg.get('booklooker', 'order_prefix', fallback='BN,BLX')
@@ -107,6 +111,7 @@ order_prefix = BN,BLX
         'output_path':  output_path,
         'ftp':          ftp,
         'wp_url':       wp_url,
+        'wp_mode':      wp_mode,
         'order_prefix': order_prefix,
     }
 
@@ -141,63 +146,127 @@ def get_article_data(api_key):
     order_nos = [a.strip().upper() for a in data['returnValue'].strip().split('\n') if a.strip()]
     ok(f"Aktive Artikel: {len(order_nos)}")
 
-    # Aufruf 2: ISBN + Preis
-    log("Hole ISBN + Preise...")
+    # Aufruf 2: orderNo + Preis (gleiche Reihenfolge wie Aufruf 1)
+    log("Hole Preise...")
     r = requests.get(
         "https://api.booklooker.de/2.0/article_list",
-        params={'token': token, 'field': 'isbn', 'showPrice': 1, 'mediaType': 0}, timeout=30
+        params={'token': token, 'field': 'orderNo', 'showPrice': 1}, timeout=30
     )
     data = r.json()
-    isbn_lines = []
+    price_map = {}  # orderNo → price
     if data['status'] == 'OK' and data['returnValue'].strip():
-        isbn_lines = [l.strip() for l in data['returnValue'].strip().split('\n') if l.strip()]
+        for line in data['returnValue'].strip().split('\n'):
+            parts = line.strip().split('\t')
+            if parts:
+                ono = parts[0].strip().upper()
+                price = parts[1].strip() if len(parts) > 1 else ''
+                price_map[ono] = price
+    ok(f"Preise geladen: {len(price_map)} Einträge")
 
-    # Zusammenführen (gleiche Reihenfolge laut API-Doku)
+    # Aufruf 3: ISBN (gleiche Reihenfolge wie Aufruf 1)
+    log("Hole ISBNs...")
+    r = requests.get(
+        "https://api.booklooker.de/2.0/article_list",
+        params={'token': token, 'field': 'isbn'}, timeout=30
+    )
+    data = r.json()
+    isbn_map = {}  # orderNo → isbn (per Index, gleiche Reihenfolge)
+    if data['status'] == 'OK' and data['returnValue'].strip():
+        isbn_lines = [l.strip() for l in data['returnValue'].strip().split('\n')]
+        for i, order_no in enumerate(order_nos):
+            if i < len(isbn_lines):
+                isbn_map[order_no] = isbn_lines[i].strip()
+    ok(f"ISBNs geladen: {len([v for v in isbn_map.values() if v])} mit ISBN")
+
+    # Zusammenführen
     article_info = {}
-    for i, order_no in enumerate(order_nos):
-        isbn  = ''
-        price = ''
-        if i < len(isbn_lines):
-            parts = isbn_lines[i].split('\t')
-            isbn  = parts[0].strip()
-            price = parts[1].strip() if len(parts) > 1 else ''
-        article_info[order_no] = {'isbn': isbn, 'price': price}
+    for order_no in order_nos:
+        article_info[order_no] = {
+            'isbn':  isbn_map.get(order_no, ''),
+            'price': price_map.get(order_no, ''),
+        }
 
     return set(order_nos), article_info
 
 
 # ============================================================
-# WP-SEITE PARSEN → ISBN → detail-URL Mapping
+# WP-SEITE PARSEN → ISBN → detail-URL + Beschreibung
 # ============================================================
-def get_wp_links(wp_url=None):
-    """Liest WP-Seite und baut dict: isbn → booklooker-detail-URL.
-    Gibt {} zurück wenn wp_url nicht konfiguriert oder nicht erreichbar."""
+def get_wp_data(wp_url=None):
+    """Liest WP-Seite und baut zwei Dicts:
+       wp_links  – isbn → booklooker-detail-URL
+       wp_desc   – isbn → Beschreibungstext (für Tooltip)
+    Gibt ({}, {}) zurück wenn wp_url nicht konfiguriert oder nicht erreichbar."""
     if not wp_url:
         log("Kein [wordpress] in Config → Cover-Links zeigen auf Händlerkatalog")
-        return {}
+        return {}, {}
 
     log(f"Lese WP-Seite: {wp_url} ...")
     try:
         r = requests.get(wp_url, timeout=20)
         r.raise_for_status()
+        r.encoding = 'utf-8'   # Encoding-Fix: verhindert Ã¼ statt ü
     except Exception as e:
         warn(f"WP-Seite nicht erreichbar: {e} → Cover-Links fallen weg")
-        return {}
+        return {}, {}
 
+    html = r.text
+
+    # ── Detail-URLs ──────────────────────────────────────────
     # onClick="window.open('https://www.booklooker.de/app/detail.php?id=...')"
     detail_urls = re.findall(
         r"onClick=\"window\.open\('(https://www\.booklooker\.de/app/detail\.php\?id=[^']+)'\)\"",
-        r.text
+        html
     )
-    # ISBN aus dem HTML: ISBN: 9783593353838
-    isbns = re.findall(r'ISBN:\s*(\d{10,13})', r.text)
 
-    mapping = {}
-    for isbn, url in zip(isbns, detail_urls):
-        mapping[isbn] = url
+    # ── ISBNs ────────────────────────────────────────────────
+    # Reihenfolge muss mit detail_urls übereinstimmen →
+    # wir parsen Artikel-Blöcke strukturiert
+    # Jeder Artikel-Block: <tr> … ISBN: XXXX … onClick … Beschreibung …
+    # Da das Plugin eine Tabelle rendert, splitten wir nach <tr
+    blocks = re.split(r'<tr[\s>]', html, flags=re.IGNORECASE)
 
-    ok(f"WP-Links: {len(mapping)} ISBN→URL Paare gefunden")
-    return mapping
+    wp_links = {}
+    wp_desc  = {}
+
+    for block in blocks:
+        # ISBN im Block
+        isbn_m = re.search(r'ISBN:\s*(\d{10,13})', block)
+        if not isbn_m:
+            continue
+        isbn = isbn_m.group(1).strip()
+
+        # Detail-URL im Block
+        url_m = re.search(
+            r"onClick=\"window\.open\('(https://www\.booklooker\.de/app/detail\.php\?id=[^']+)'\)\"",
+            block
+        )
+        if url_m:
+            wp_links[isbn] = url_m.group(1)
+
+        # Beschreibungstext: letztes <td> im Block (4. Spalte = Beschreibung)
+        # Wir nehmen den längsten Text-Inhalt eines <td> im Block
+        tds = re.findall(r'<td[^>]*>(.*?)</td>', block, re.DOTALL | re.IGNORECASE)
+        if tds:
+            # Längsten td-Inhalt nehmen (= Beschreibung)
+            longest = max(tds, key=len)
+            # HTML-Tags entfernen
+            desc = re.sub(r'<[^>]+>', '', longest)
+            # Preis-Zeilen herausfiltern (Preis(€): … Versand(€): …)
+            desc = re.sub(r'Preis\(.*', '', desc, flags=re.DOTALL)
+            # Whitespace normalisieren
+            desc = ' '.join(desc.split()).strip()
+            if len(desc) > 30:   # nur echte Beschreibungen
+                wp_desc[isbn] = desc
+
+    ok(f"WP-Links: {len(wp_links)} ISBN→URL Paare, {len(wp_desc)} Beschreibungen geladen")
+    return wp_links, wp_desc
+
+
+# Rückwärtskompatibilität (falls irgendwo get_wp_links direkt aufgerufen wird)
+def get_wp_links(wp_url=None):
+    links, _ = get_wp_data(wp_url)
+    return links
 
 # ============================================================
 # BILDER BEREINIGEN
@@ -222,9 +291,15 @@ def cleanup(gallery_path, active_articles, order_prefix=None):
     sold_dir.mkdir(exist_ok=True)
 
     moved = cleaned = skipped = 0
-    images = sorted(gallery_path.glob("*.jpg"), key=lambda f: f.name.upper(), reverse=True)
+    # Rekursiv in allen Unterordnern suchen, Verkauft-Ordner ausschließen
+    images = sorted(
+        [f for f in gallery_path.rglob("*.jpg")
+          if sold_dir not in f.parents
+          and "galerie-output" not in f.parts],
+        key=lambda f: f.name.upper(), reverse=True
+    )
 
-    log(f"Bereinige {len(images)} JPGs in {gallery_path} ...")
+    log(f"Bereinige {len(images)} JPGs in {gallery_path} (inkl. Unterordner) ...")
     log(f"Erkannte Präfixe: {', '.join(order_prefix or ['BN','BLX'])}")
 
     for img in images:
@@ -255,17 +330,22 @@ def cleanup(gallery_path, active_articles, order_prefix=None):
 # ============================================================
 # HTML GENERIEREN
 # ============================================================
-def generate_html(gallery_path, output_path, article_info=None, wp_links=None, order_prefix=None):
+def generate_html(gallery_path, output_path, article_info=None, wp_links=None, order_prefix=None, wp_desc=None):
     if order_prefix is None:
         order_prefix = ['BN', 'BLX']
+    sold_dir = gallery_path / "Verkauft"
     images = sorted(
-        [f for f in gallery_path.glob("*.jpg") if is_valid(f.name, order_prefix)[0]],
+        [f for f in gallery_path.rglob("*.jpg")
+          if is_valid(f.name, order_prefix)[0]
+          and "galerie-output" not in f.parts
+          and sold_dir not in f.parents],
         key=lambda f: f.name.upper(), reverse=True
     )
     ok(f"Generiere Galerie mit {len(images)} Bildern...")
 
     article_info = article_info or {}
     wp_links     = wp_links     or {}
+    wp_desc      = wp_desc      or {}
 
     # Fallback-URL wenn kein Direktlink verfügbar
     FALLBACK_URL = "https://www.booklooker.de/wdeu/B%C3%BCcher/Angebote/?sortOrder=offerDate&sortDirection=desc"
@@ -283,6 +363,11 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
         # Detail-Link: WP-Mapping per ISBN, sonst Fallback
         href  = wp_links.get(isbn, FALLBACK_URL)
 
+        # Beschreibung für Tooltip (HTML-escapen)
+        desc_raw  = wp_desc.get(isbn, '')
+        desc_attr = desc_raw.replace('&', '&amp;').replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;') if desc_raw else ''
+        tooltip_attr = f' data-tooltip="{desc_attr}"' if desc_attr else ''
+
         # Preis-Overlay nur wenn Preis bekannt
         price_html = ""
         if price:
@@ -293,7 +378,7 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
                 pass
 
         items_html += f"""
-    <div class="item">
+    <div class="item"{tooltip_attr}>
       <a href="{href}" target="_blank" rel="noopener" title="Bei Booklooker kaufen">
         <div class="thumb-wrap">
           <img src="images/{fname}" alt="{stem}" title="{stem}" loading="lazy">
@@ -311,7 +396,7 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bücherkiste – wdeu bei Booklooker.de</title>
+  <title>Booq – wdeu bei Booklooker.de</title>
 
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;700&display=swap"
@@ -356,46 +441,57 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
       margin-top: 4px;
     }}
 
-    header .bl-link {{
-      display: inline-block;
-      margin-top: 8px;
-      padding: 6px 14px;
-      background: #37677B;
-      color: #fff;
-      text-decoration: none;
-      border-radius: 4px;
-      font-size: 13px;
-      font-weight: 500;
-      transition: background 0.2s;
-    }}
-    header .bl-link:hover {{ background: #2a4f5f; }}
-
     header .stats {{
       font-size: 11px;
       color: #aaa;
+      margin-top: 4px;
+    }}
+
+    /* ── Header-Row: Info links, Slider rechts ── */
+    .header-row {{
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
       margin-top: 6px;
+    }}
+
+    /* ── Slider ── */
+    .size-control {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }}
+    .size-control label {{
+      font-size: 11px;
+      color: #848681;
+      white-space: nowrap;
+    }}
+    .size-control input[type=range] {{
+      width: 110px;
+      accent-color: #37677B;
+      cursor: pointer;
+    }}
+    .size-control .size-val {{
+      font-size: 11px;
+      color: #37677B;
+      font-weight: 600;
+      min-width: 32px;
     }}
 
     /* ── Grid ── */
     .grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(var(--thumb-size, 130px), 1fr));
       gap: 12px;
       padding: 20px;
     }}
 
     @media (max-width: 480px) {{
       .grid {{
-        grid-template-columns: repeat(auto-fill, minmax(95px, 1fr));
         gap: 8px;
         padding: 12px;
-      }}
-    }}
-
-    @media (min-width: 1400px) {{
-      .grid {{
-        grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-        gap: 10px;
       }}
     }}
 
@@ -465,6 +561,24 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
       border-top: 1px solid #eee;
     }}
 
+    /* ── Tooltip ── */
+    .tooltip-box {{
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      max-width: 320px;
+      background: rgba(30, 30, 30, 0.96);
+      color: #f0ece4;
+      font-family: 'Raleway', sans-serif;
+      font-size: 13px;
+      line-height: 1.55;
+      padding: 12px 14px;
+      border-radius: 7px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+      pointer-events: none;
+      word-break: break-word;
+    }}
+
     /* ── Footer ── */
     footer {{
       text-align: center;
@@ -479,13 +593,18 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
 <body>
 
 <header>
-  <h1>Bücherkiste</h1>
+  <h1>Booq</h1>
   <div class="sub">wdeu bei Booklooker.de</div>
   <div class="hint">Klick aufs Cover → direkt zu Booklooker</div>
-  <a class="bl-link"
-     href="https://www.booklooker.de/wdeu/B%C3%BCcher/Angebote/?sortOrder=offerDate&sortDirection=desc"
-     target="_blank">zu Booklooker.de &rsaquo;&rsaquo;</a>
-  <div class="stats">{count} Bücher · Stand: {now}</div>
+  <div class="header-row">
+    <div class="stats">{count} Bücher · Stand: {now}</div>
+    <div class="size-control">
+      <label for="sizeSlider">🔍</label>
+      <input type="range" id="sizeSlider" min="80" max="280" step="10" value="130"
+             oninput="setSize(this.value)">
+      <span class="size-val" id="sizeVal">130px</span>
+    </div>
+  </div>
 </header>
 
 <main>
@@ -493,9 +612,60 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
   </div>
 </main>
 
+<div class="tooltip-box" id="tooltip"></div>
+
 <footer>
   Fachbücher Psychologie &amp; Sozialwissenschaften · wdeu bei Booklooker.de
 </footer>
+
+<script>
+  const STORAGE_KEY = 'booq-thumb-size';
+  const slider = document.getElementById('sizeSlider');
+  const sizeVal = document.getElementById('sizeVal');
+  const grid = document.querySelector('.grid');
+
+  function setSize(v) {{
+    v = parseInt(v);
+    grid.style.setProperty('--thumb-size', v + 'px');
+    sizeVal.textContent = v + 'px';
+    slider.value = v;
+    try {{ localStorage.setItem(STORAGE_KEY, v); }} catch(e) {{}}
+  }}
+
+  // Gespeicherte Größe laden
+  try {{
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) setSize(saved);
+  }} catch(e) {{}}  // ── Tooltip ──────────────────────────────────────────────
+  const tip = document.getElementById('tooltip');
+  let hideTimer;
+
+  document.querySelectorAll('.item[data-tooltip]').forEach(item => {{
+    item.addEventListener('mouseenter', e => {{
+      clearTimeout(hideTimer);
+      tip.textContent = item.dataset.tooltip;
+      tip.style.display = 'block';
+      positionTip(e);
+    }});
+    item.addEventListener('mousemove', positionTip);
+    item.addEventListener('mouseleave', () => {{
+      hideTimer = setTimeout(() => {{ tip.style.display = 'none'; }}, 80);
+    }});
+  }});
+
+  function positionTip(e) {{
+    const pad = 14;
+    const tw = tip.offsetWidth;
+    const th = tip.offsetHeight;
+    let x = e.clientX + pad;
+    let y = e.clientY + pad;
+    if (x + tw > window.innerWidth  - 8) x = e.clientX - tw - pad;
+    if (y + th > window.innerHeight - 8) y = e.clientY - th - pad;
+    tip.style.left = x + 'px';
+    tip.style.top  = y + 'px';
+  }}
+
+</script>
 
 </body>
 </html>"""
@@ -503,7 +673,10 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
     # Output-Ordner anlegen
     output_path.mkdir(parents=True, exist_ok=True)
     images_out = output_path / "images"
-    images_out.mkdir(exist_ok=True)
+    # Immer neu befüllen → keine veralteten oder falsch-gecachten Dateien
+    if images_out.exists():
+        shutil.rmtree(str(images_out))
+    images_out.mkdir()
 
     # HTML schreiben
     html_file = output_path / "index.html"
@@ -525,6 +698,38 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
 # ============================================================
 # MAIN
 # ============================================================
+
+# ============================================================
+# BL-BILDORDNER AUSWÄHLEN
+# ============================================================
+def find_bl_image_dir(gallery_path, order_prefix=None):
+    """Sucht BL-Bildordner (Pattern: *-images-*) in gallery_path.
+    Nimmt den neuesten, warnt bei mehreren."""
+    if order_prefix is None:
+        order_prefix = ['BN', 'BLX']
+
+    # Alle Unterordner die dem BL-Muster entsprechen
+    bl_dirs = sorted(
+        [d for d in gallery_path.iterdir()
+         if d.is_dir() and '-images-' in d.name.lower()],
+        key=lambda d: d.stat().st_mtime, reverse=True
+    )
+
+    if not bl_dirs:
+        # Kein Unterordner → gallery_path selbst als Quelle
+        return gallery_path
+
+    if len(bl_dirs) > 1:
+        warn(f"{len(bl_dirs)} BL-Bildordner gefunden – nehme den neuesten:")
+        for i, d in enumerate(bl_dirs):
+            marker = "  ✓ (wird verwendet)" if i == 0 else "  ✗ (wird ignoriert)"
+            warn(f"    {d.name}{marker}")
+        warn("Tipp: Alte Ordner löschen um Verwirrung zu vermeiden.")
+
+    ok(f"BL-Bildordner: {bl_dirs[0].name}")
+    return bl_dirs[0]
+
+
 def main():
     print("═" * 56)
     print("  📚 Booklooker Galerie Generator")
@@ -536,17 +741,28 @@ def main():
     # 1. API: orderNo + ISBN + Preis
     active, article_info = get_article_data(cfg['api_key'])
 
-    # 2. WP-Seite: ISBN → detail-URL Mapping
+    # 2. WP-Seite: ISBN → detail-URL + Beschreibung (nur wenn wordpress_mode = yes)
     print()
-    wp_links = get_wp_links(cfg.get('wp_url'))
+    if cfg.get('wp_mode') and cfg.get('wp_url'):
+        wp_links, wp_desc = get_wp_data(cfg['wp_url'])
+    else:
+        if cfg.get('wp_url') and not cfg.get('wp_mode'):
+            log("wordpress_mode = no → WP-Scraping übersprungen (nur API-Preise)")
+        else:
+            log("Kein [wordpress] in Config → Cover-Links zeigen auf Händlerkatalog")
+        wp_links, wp_desc = {}, {}
 
-    # 3. Bilder bereinigen
+    # 3. BL-Bildordner bestimmen (neuester bei mehreren)
     print()
-    cleanup(cfg['gallery_path'], active, cfg['order_prefix'])
+    image_dir = find_bl_image_dir(cfg['gallery_path'], cfg['order_prefix'])
 
-    # 4. Galerie generieren
+    # 4. Bilder bereinigen
     print()
-    count = generate_html(cfg['gallery_path'], cfg['output_path'], article_info, wp_links, cfg['order_prefix'])
+    cleanup(image_dir, active, cfg['order_prefix'])
+
+    # 5. Galerie generieren
+    print()
+    count = generate_html(image_dir, cfg['output_path'], article_info, wp_links, cfg['order_prefix'], wp_desc)
 
     print()
     print("═" * 56)
