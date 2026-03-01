@@ -579,18 +579,68 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
       word-break: break-word;
     }}
 
+    /* ── X-Button (zurück zu wdeu.de) ── */
+    .close-btn {{
+      position: fixed;
+      top: 14px;
+      right: 16px;
+      z-index: 200;
+      background: #fff;
+      border: 1.5px solid #e0ddd5;
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      color: #848681;
+      font-size: 18px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      transition: border-color 0.2s, color 0.2s;
+    }}
+    .close-btn:hover {{ border-color: #37677B; color: #37677B; }}
+
     /* ── Footer ── */
     footer {{
       text-align: center;
-      padding: 24px;
+      padding: 20px 24px;
       font-size: 12px;
       color: #aaa;
       border-top: 1px solid #e0ddd5;
       margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
     }}
+
+    .footer-icons {{
+      display: flex;
+      gap: 28px;
+      align-items: center;
+      justify-content: center;
+    }}
+
+    .footer-btn {{
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1.4rem;
+      padding: 0.3rem;
+      border-radius: 0.5rem;
+      color: #848681;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      transition: color 0.15s;
+    }}
+    .footer-btn:hover {{ color: #37677B; }}
   </style>
 </head>
 <body>
+
+<a class="close-btn" href="https://wdeu.de" title="Zurück zu wdeu.de">✕</a>
 
 <header>
   <h1>Booq</h1>
@@ -615,7 +665,18 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
 <div class="tooltip-box" id="tooltip"></div>
 
 <footer>
-  Fachbücher Psychologie &amp; Sozialwissenschaften · wdeu bei Booklooker.de
+  <div class="footer-icons">
+    <a class="footer-btn" href="https://wdeu.de" title="wdeu.de">💡</a>
+    <button class="footer-btn" id="share-btn" title="Seite teilen">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+        <polyline points="16 6 12 2 8 6"/>
+        <line x1="12" y1="2" x2="12" y2="15"/>
+      </svg>
+    </button>
+    <button class="footer-btn" id="homescreen-btn" title="Zum Homescreen hinzufügen">📌</button>
+  </div>
+  <div>Fachbücher Psychologie &amp; Sozialwissenschaften · wdeu bei Booklooker.de</div>
 </footer>
 
 <script>
@@ -664,6 +725,33 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
     tip.style.left = x + 'px';
     tip.style.top  = y + 'px';
   }}
+
+  // ── Share & Homescreen ──────────────────────────────────
+  document.getElementById('share-btn').addEventListener('click', async () => {{
+    if (navigator.share) {{
+      try {{
+        await navigator.share({{
+          title: 'Bücherkiste – wdeu bei Booklooker.de',
+          url: 'https://galerie.wdeu.de'
+        }});
+      }} catch {{}}
+    }} else {{
+      await navigator.clipboard.writeText('https://galerie.wdeu.de');
+      alert('Link kopiert!');
+    }}
+  }});
+
+  document.getElementById('homescreen-btn').addEventListener('click', () => {{
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isAndroid = /android/i.test(navigator.userAgent);
+    if (isIOS) {{
+      alert('Tippe unten auf das Teilen-Symbol ⬆️, dann „Zum Home-Bildschirm".');
+    }} else if (isAndroid) {{
+      alert('Tippe oben rechts auf das Menü ⋮, dann „Zum Startbildschirm hinzufügen".');
+    }} else {{
+      alert('Öffne galerie.wdeu.de auf deinem Smartphone und wähle im Browser-Menü „Zum Homescreen hinzufügen".');
+    }}
+  }});
 
 </script>
 
