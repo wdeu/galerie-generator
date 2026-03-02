@@ -150,7 +150,7 @@ def get_article_data(api_key):
     log("Hole Preise...")
     r = requests.get(
         "https://api.booklooker.de/2.0/article_list",
-        params={'token': token, 'field': 'orderNo', 'showPrice': 1}, timeout=30
+        params={'token': token, 'field': 'orderNo', 'showPrice': 1, 'mediaType': 1}, timeout=30
     )
     data = r.json()
     price_map = {}  # orderNo → price
@@ -167,7 +167,7 @@ def get_article_data(api_key):
     log("Hole ISBNs...")
     r = requests.get(
         "https://api.booklooker.de/2.0/article_list",
-        params={'token': token, 'field': 'isbn'}, timeout=30
+        params={'token': token, 'field': 'isbn', 'mediaType': 1}, timeout=30
     )
     data = r.json()
     isbn_map = {}  # orderNo → isbn (per Index, gleiche Reihenfolge)
