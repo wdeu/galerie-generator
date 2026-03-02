@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <!-- Weißer Hintergrund -->
+  <rect width="180" height="180" rx="38" fill="#ffffff"/>
+  <!-- Dezente grüne Rahmenlinie -->
+  <rect width="180" height="180" rx="38" fill="none" stroke="#10b981" stroke-width="6"/>
+  <!-- Ampersand – dunkel, serif-Charakter -->
+  <text
+    x="90"
+    y="132"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="130"
+    font-weight="700"
+    text-anchor="middle"
+    fill="#1a1a1a"
+  >&amp;</text>
+</svg>
