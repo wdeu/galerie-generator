@@ -395,6 +395,7 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
 <html lang="de">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" href="favicon.png" type="image/png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Booq – wdeu bei Booklooker.de</title>
 
@@ -782,6 +783,12 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
 
     ok(f"{copied} Bilder neu kopiert ({len(images)} gesamt)")
     return len(images)
+
+# Favicon kopieren falls vorhanden
+favicon_src = Path(__file__).parent / "favicon.png"
+if favicon_src.exists():
+    shutil.copy2(str(favicon_src), str(output_path / "favicon.png"))
+    ok("favicon.png kopiert")
 
 # ============================================================
 # MAIN
