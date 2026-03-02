@@ -78,7 +78,7 @@ und trage alle Präfixe ein die dort vorkommen. Standardmäßig sind `BN` und
 
 Logge dich bei Booklooker ein, fordere den Bilder-Download an, warte auf die
 Mail mit dem Download-Link und lade die ZIP-Datei herunter. macOS entpackt
-sie automatisch in `~/Downloads`.
+sie automatisch in `~/Downloads`, oder per Mausklick entpacken.
 
 ### 2. Generator starten
 
