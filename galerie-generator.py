@@ -772,6 +772,12 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
     html_file.write_text(html, encoding='utf-8')
     ok(f"index.html → {html_file}")
 
+    # Favicon kopieren falls vorhanden
+    favicon_src = Path(__file__).parent / "favicon.png"
+    if favicon_src.exists():
+        shutil.copy2(str(favicon_src), str(output_path / "favicon.png"))
+        ok("favicon.png kopiert")
+
     # Bilder kopieren/verlinken
     log("Kopiere Bilder nach public/images/ ...")
     copied = 0
@@ -783,12 +789,6 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
 
     ok(f"{copied} Bilder neu kopiert ({len(images)} gesamt)")
     return len(images)
-
-# Favicon kopieren falls vorhanden
-favicon_src = Path(__file__).parent / "favicon.png"
-if favicon_src.exists():
-    shutil.copy2(str(favicon_src), str(output_path / "favicon.png"))
-    ok("favicon.png kopiert")
 
 # ============================================================
 # MAIN
