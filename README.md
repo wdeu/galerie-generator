@@ -2,8 +2,8 @@
 
 Automatische Buchcover-Galerie für Booklooker-Verkäufer.
 
-Das Script holt deine aktiven Artikel per Booklooker-API, bereinigt deinen
-Download-Ordner und generiert eine fertige, hochladbare `index.html` mit
+Das Script holt deine aktiven Artikel per Booklooker-API, bereitet Deinen Buchcover--Download
+auf und generiert eine fertige, hochladbare `index.html` mit
 Cover-Grid, Preis-Overlay und direkten Links zu Booklooker.
 
 **Live-Beispiel:** [galerie.wdeu.de](https://galerie.wdeu.de)
