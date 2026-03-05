@@ -57,6 +57,9 @@ api_key = DEIN_API_KEY_HIER
 # Beispiel: order_prefix = BN,BLX,MGB
 order_prefix = BN,BLX
 
+# Dein Booklooker-Benutzername (für Cover-Links)
+# seller_id = DEIN_USERNAME_HIER
+
 # [paths] ist optional – ohne diesen Abschnitt werden die Defaults verwendet:
 #   gallery_path = {DEFAULT_IN}   (BL-Bilder aus Downloads)
 #   output_path  = {DEFAULT_OUT}  (fertige Galerie)
@@ -105,6 +108,8 @@ order_prefix = BN,BLX
     raw_prefix   = cfg.get('booklooker', 'order_prefix', fallback='BN,BLX')
     order_prefix = [p.strip().upper() for p in raw_prefix.split(',') if p.strip()]
 
+    seller_id = cfg.get('booklooker', 'seller_id', fallback='')
+
     return {
         'api_key':      cfg.get('booklooker', 'api_key'),
         'gallery_path': gallery_path,
@@ -113,6 +118,7 @@ order_prefix = BN,BLX
         'wp_url':       wp_url,
         'wp_mode':      wp_mode,
         'order_prefix': order_prefix,
+        'seller_id':    seller_id,
     }
 
 # ============================================================
@@ -330,7 +336,7 @@ def cleanup(gallery_path, active_articles, order_prefix=None):
 # ============================================================
 # HTML GENERIEREN
 # ============================================================
-def generate_html(gallery_path, output_path, article_info=None, wp_links=None, order_prefix=None, wp_desc=None):
+def generate_html(gallery_path, output_path, article_info=None, wp_links=None, order_prefix=None, wp_desc=None, seller_id=''):
     if order_prefix is None:
         order_prefix = ['BN', 'BLX']
     sold_dir = gallery_path / "Verkauft"
@@ -348,7 +354,10 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
     wp_desc      = wp_desc      or {}
 
     # Fallback-URL wenn kein Direktlink verfügbar
-    FALLBACK_URL = "https://www.booklooker.de/wdeu/B%C3%BCcher/Angebote/?sortOrder=offerDate&sortDirection=desc"
+    if seller_id:
+        FALLBACK_URL = f"https://www.booklooker.de/{seller_id}/B%C3%BCcher/Angebote/?sortOrder=offerDate&sortDirection=desc"
+    else:
+        FALLBACK_URL = "https://www.booklooker.de/"
 
     # Baue Bild-Tags
     items_html = ""
@@ -857,7 +866,7 @@ def main():
 
     # 5. Galerie generieren
     print()
-    count = generate_html(image_dir, cfg['output_path'], article_info, wp_links, cfg['order_prefix'], wp_desc)
+    count = generate_html(image_dir, cfg['output_path'], article_info, wp_links, cfg['order_prefix'], wp_desc, cfg['seller_id'])
 
     print()
     print("═" * 56)
