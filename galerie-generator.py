@@ -57,8 +57,11 @@ api_key = DEIN_API_KEY_HIER
 # Beispiel: order_prefix = BN,BLX,MGB
 order_prefix = BN,BLX
 
-# Dein Booklooker-Benutzername (für Cover-Links)
-# seller_id = DEIN_USERNAME_HIER
+# Deine Booklooker-Benutzer-ID (7-stellige Nummer, nicht der Username).
+# Wo findest du sie: Mein Depot → Meine Angebote → "Eigene Angebote aus Kundensicht"
+# → in der Adresszeile steht dann: showAlluID=1234567
+# Diese Nummer hier eintragen:
+# seller_id = 1234567
 
 # [paths] ist optional – ohne diesen Abschnitt werden die Defaults verwendet:
 #   gallery_path = {DEFAULT_IN}   (BL-Bilder aus Downloads)
@@ -355,7 +358,7 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
 
     # Fallback-URL wenn kein Direktlink verfügbar
     if seller_id:
-        FALLBACK_URL = f"https://www.booklooker.de/{seller_id}/B%C3%BCcher/Angebote/?sortOrder=offerDate&sortDirection=desc"
+        FALLBACK_URL = f"https://www.booklooker.de/B%C3%BCcher/Angebote/showAlluID={seller_id}?setMediaType=0&sortOrder=offerDate&sortDirection=desc"
     else:
         FALLBACK_URL = "https://www.booklooker.de/"
 
