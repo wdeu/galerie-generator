@@ -879,8 +879,8 @@ def main():
     print(f"  📁 Output:  {cfg['output_path']}")
     print(f"  🌐 Preview: open \"{cfg['output_path']}/index.html\"")
     print()
-    print(f"  💡 Upload: Inhalt von galerie-output/ mit Forklift")
-    print(f"     nach /buecher/ auf IONOS hochladen")
+    print(f"  💡 Upload: Inhalt von galerie-output/ auf deinen Webserver laden")
+    print(f"     oder per Netlify Drag & Drop (siehe ANLEITUNG)")
     print("═" * 56)
 
 if __name__ == "__main__":
