@@ -57,6 +57,11 @@ api_key = DEIN_API_KEY_HIER
 # Beispiel: order_prefix = BN,BLX,MGB
 order_prefix = BN,BLX
 
+# Optional: Basis-URL für Artikel deren Bilder nicht im BL-Download enthalten sind.
+# Booklooker holt Bilder von dort per @NR@-Platzhalter (Mein Depot → Bilder → Basis-URL).
+# Beispiel: cover_base_url = https://cover.meinedomain.de/
+# cover_base_url =
+
 # Deine Booklooker-Benutzer-ID (7-stellige Nummer, nicht der Username).
 # Wo findest du sie: Mein Depot → Meine Angebote → "Eigene Angebote aus Kundensicht"
 # → in der Adresszeile steht dann: showAlluID=1234567
@@ -111,17 +116,19 @@ order_prefix = BN,BLX
     raw_prefix   = cfg.get('booklooker', 'order_prefix', fallback='BN,BLX')
     order_prefix = [p.strip().upper() for p in raw_prefix.split(',') if p.strip()]
 
-    seller_id = cfg.get('booklooker', 'seller_id', fallback='')
+    seller_id      = cfg.get('booklooker', 'seller_id',      fallback='')
+    cover_base_url = cfg.get('booklooker', 'cover_base_url', fallback='')
 
     return {
-        'api_key':      cfg.get('booklooker', 'api_key'),
-        'gallery_path': gallery_path,
-        'output_path':  output_path,
-        'ftp':          ftp,
-        'wp_url':       wp_url,
-        'wp_mode':      wp_mode,
-        'order_prefix': order_prefix,
-        'seller_id':    seller_id,
+        'api_key':        cfg.get('booklooker', 'api_key'),
+        'gallery_path':   gallery_path,
+        'output_path':    output_path,
+        'ftp':            ftp,
+        'wp_url':         wp_url,
+        'wp_mode':        wp_mode,
+        'order_prefix':   order_prefix,
+        'seller_id':      seller_id,
+        'cover_base_url': cover_base_url,
     }
 
 # ============================================================
@@ -339,18 +346,9 @@ def cleanup(gallery_path, active_articles, order_prefix=None):
 # ============================================================
 # HTML GENERIEREN
 # ============================================================
-def generate_html(gallery_path, output_path, article_info=None, wp_links=None, order_prefix=None, wp_desc=None, seller_id=''):
+def generate_html(gallery_path, output_path, article_info=None, wp_links=None, order_prefix=None, wp_desc=None, seller_id='', cover_base_url=''):
     if order_prefix is None:
         order_prefix = ['BN', 'BLX']
-    sold_dir = gallery_path / "Verkauft"
-    images = sorted(
-        [f for f in gallery_path.rglob("*.jpg")
-          if is_valid(f.name, order_prefix)[0]
-          and "galerie-output" not in f.parts
-          and sold_dir not in f.parents],
-        key=lambda f: f.name.upper(), reverse=True
-    )
-    ok(f"Generiere Galerie mit {len(images)} Bildern...")
 
     article_info = article_info or {}
     wp_links     = wp_links     or {}
@@ -361,6 +359,66 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
         FALLBACK_URL = f"https://www.booklooker.de/B%C3%BCcher/Angebote/showAlluID={seller_id}?setMediaType=0&sortOrder=offerDate&sortDirection=desc"
     else:
         FALLBACK_URL = "https://www.booklooker.de/"
+
+    # a) Output-Ordner anlegen
+    output_path.mkdir(parents=True, exist_ok=True)
+    images_out = output_path / "images"
+    if images_out.exists():
+        shutil.rmtree(str(images_out))
+    images_out.mkdir()
+
+    # Favicon kopieren falls vorhanden
+    favicon_src = Path(__file__).parent / "favicon.png"
+    if favicon_src.exists():
+        shutil.copy2(str(favicon_src), str(output_path / "favicon.png"))
+        ok("favicon.png kopiert")
+
+    # b) Lokale BL-Bilder nach images_out kopieren
+    sold_dir = gallery_path / "Verkauft"
+    source_images = sorted(
+        [f for f in gallery_path.rglob("*.jpg")
+          if is_valid(f.name, order_prefix)[0]
+          and "galerie-output" not in f.parts
+          and sold_dir not in f.parents],
+        key=lambda f: f.name.upper(), reverse=True
+    )
+    ok(f"Generiere Galerie mit {len(source_images)} lokalen Bildern...")
+
+    log("Kopiere Bilder nach public/images/ ...")
+    copied = 0
+    for img in source_images:
+        target = images_out / img.name.lower()
+        if not target.exists() or target.stat().st_mtime < img.stat().st_mtime:
+            shutil.copy2(str(img), str(target))
+            copied += 1
+    ok(f"{copied} Bilder neu kopiert ({len(source_images)} gesamt)")
+
+    # c) Fehlende Cover von cover_base_url nachladen
+    if cover_base_url:
+        missing = [
+            orderNo for orderNo in article_info.keys()
+            if not (images_out / (orderNo.lower() + '.jpg')).exists()
+        ]
+        downloaded = 0
+        for orderNo in missing:
+            url = cover_base_url.rstrip('/') + '/' + orderNo.lower() + '.jpg'
+            try:
+                r = requests.get(url, timeout=10)
+                if r.status_code == 200:
+                    (images_out / (orderNo.lower() + '.jpg')).write_bytes(r.content)
+                    warn(f"Cover-Download: {orderNo}")
+                    downloaded += 1
+            except Exception:
+                pass
+        if downloaded:
+            ok(f"{downloaded} Cover von {cover_base_url} nachgeladen")
+
+    # d) images_out neu scannen (enthält jetzt lokale + nachgeladene Cover)
+    images = sorted(
+        [f for f in images_out.glob("*.jpg")
+         if is_valid(f.name, order_prefix)[0]],
+        key=lambda f: f.name.upper(), reverse=True
+    )
 
     # Baue Bild-Tags
     items_html = ""
@@ -771,36 +829,12 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
 </body>
 </html>"""
 
-    # Output-Ordner anlegen
-    output_path.mkdir(parents=True, exist_ok=True)
-    images_out = output_path / "images"
-    # Immer neu befüllen → keine veralteten oder falsch-gecachten Dateien
-    if images_out.exists():
-        shutil.rmtree(str(images_out))
-    images_out.mkdir()
-
-    # HTML schreiben
+    # e) HTML schreiben
     html_file = output_path / "index.html"
     html_file.write_text(html, encoding='utf-8')
     ok(f"index.html → {html_file}")
 
-    # Favicon kopieren falls vorhanden
-    favicon_src = Path(__file__).parent / "favicon.png"
-    if favicon_src.exists():
-        shutil.copy2(str(favicon_src), str(output_path / "favicon.png"))
-        ok("favicon.png kopiert")
-
-    # Bilder kopieren/verlinken
-    log("Kopiere Bilder nach public/images/ ...")
-    copied = 0
-    for img in images:
-        target = images_out / img.name.lower()
-        if not target.exists() or target.stat().st_mtime < img.stat().st_mtime:
-            shutil.copy2(str(img), str(target))
-            copied += 1
-
-    ok(f"{copied} Bilder neu kopiert ({len(images)} gesamt)")
-    return len(images)
+    return count
 
 # ============================================================
 # MAIN
@@ -869,7 +903,7 @@ def main():
 
     # 5. Galerie generieren
     print()
-    count = generate_html(image_dir, cfg['output_path'], article_info, wp_links, cfg['order_prefix'], wp_desc, cfg['seller_id'])
+    count = generate_html(image_dir, cfg['output_path'], article_info, wp_links, cfg['order_prefix'], wp_desc, cfg['seller_id'], cfg['cover_base_url'])
 
     print()
     print("═" * 56)
