@@ -456,6 +456,7 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
         </div>
       </a>
       <div class="label">{stem}</div>
+      <a class="cover-update-btn" href="https://inserate.wdeu.de/#cover={stem}" title="Neues Foto aufnehmen">📷</a>
     </div>"""
 
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
@@ -568,6 +569,7 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
 
     /* ── Item ── */
     .item {{
+      position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -576,6 +578,22 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
       overflow: hidden;
       box-shadow: 0 1px 4px rgba(0,0,0,0.08);
       transition: transform 0.15s, box-shadow 0.15s;
+    }}
+
+    /* ── Cover-Update-Button (nur im Update-Modus sichtbar) ── */
+    .cover-update-btn {{
+      display: none;
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      padding: 4px 6px;
+      background: rgba(255,255,255,0.85);
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+      font-size: 16px;
+      line-height: 1;
+      text-decoration: none;
+      z-index: 5;
     }}
 
     .item:hover {{
@@ -823,6 +841,13 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
       alert('Öffne galerie.wdeu.de auf deinem Smartphone und wähle im Browser-Menü „Zum Homescreen hinzufügen".');
     }}
   }});
+
+  // ── Update-Modus (?update=1) ────────────────────────────
+  const updateMode = new URLSearchParams(location.search).has('update');
+  if (updateMode) {{
+    document.querySelectorAll('.cover-update-btn').forEach(b => b.style.display = 'block');
+    document.body.classList.add('update-mode');
+  }}
 
 </script>
 
