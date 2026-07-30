@@ -581,7 +581,7 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
     }}
 
     /* ── Cover-Update-Button (nur im Update-Modus sichtbar) ── */
-    .cover-update-btn {{
+    .item a.cover-update-btn {{
       display: none;
       position: absolute;
       top: 6px;
@@ -594,6 +594,10 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
       line-height: 1;
       text-decoration: none;
       z-index: 5;
+    }}
+
+    body.update-mode .item a.cover-update-btn {{
+      display: block;
     }}
 
     .item:hover {{
@@ -844,10 +848,7 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
 
   // ── Update-Modus (?update=1) ────────────────────────────
   const updateMode = new URLSearchParams(location.search).has('update');
-  if (updateMode) {{
-    document.querySelectorAll('.cover-update-btn').forEach(b => b.style.display = 'block');
-    document.body.classList.add('update-mode');
-  }}
+  if (updateMode) document.body.classList.add('update-mode');
 
 </script>
 
