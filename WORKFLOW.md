@@ -123,7 +123,9 @@ Raycast → Galerie Generator
 ```
 
 - Holt aktuelle Preise und Artikel per API
-- Neue ISB-Cover werden von `cover.wdeu.de` nachgeladen
+- Cover von `cover.wdeu.de` haben Vorrang vor dem lokalen BL-Bilder-Download
+  (neu hochgeladene Porträts überschreiben so die alten Schrägfotos in der
+  Galerie); fehlt dort ein Cover, greift das lokale BL-Bild
 - `~/Downloads/galerie-output/index.html` wird neu gebaut
 
 Lokal prüfen:

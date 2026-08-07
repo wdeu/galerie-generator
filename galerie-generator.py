@@ -57,8 +57,11 @@ api_key = DEIN_API_KEY_HIER
 # Beispiel: order_prefix = BN,BLX,MGB
 order_prefix = BN,BLX
 
-# Optional: Basis-URL für Artikel deren Bilder nicht im BL-Download enthalten sind.
-# Booklooker holt Bilder von dort per @NR@-Platzhalter (Mein Depot → Bilder → Basis-URL).
+# Optional: Basis-URL für Cover. Hat in der Galerie VORRANG vor dem lokalen
+# BL-Bilder-Download: liegt dort {Nr}.jpg, nimmt die Galerie dieses (z.B. ein
+# neu hochgeladenes Porträt) statt des alten BL-Schrägfotos. Fehlt es, greift
+# das lokale BL-Bild. (Booklooker selbst nutzt dieselbe URL per @NR@-Platzhalter
+# für neue Artikel: Mein Depot → Bilder → Basis-URL.)
 # Beispiel: cover_base_url = https://cover.meinedomain.de/
 # cover_base_url =
 
@@ -373,45 +376,61 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
         shutil.copy2(str(favicon_src), str(output_path / "favicon.png"))
         ok("favicon.png kopiert")
 
-    # b) Lokale BL-Bilder nach images_out kopieren
+    # Cover-Quelle: cover_base_url (cover.wdeu.de) hat VORRANG vor dem lokalen
+    # BL-Bilder-Download. So darf die Galerie schöner sein als die BL-Anzeige:
+    # liegt auf cover.wdeu.de ein {Nr}.jpg (z.B. neu hochgeladenes Porträt),
+    # wird dieses genommen; sonst das lokale BL-Download-Bild (i.d.R. das alte
+    # Schrägfoto). Das umgeht den BL-Cover-Cache komplett — für die Galerie.
     sold_dir = gallery_path / "Verkauft"
-    source_images = sorted(
-        [f for f in gallery_path.rglob("*.jpg")
-          if is_valid(f.name, order_prefix)[0]
-          and "galerie-output" not in f.parts
-          and sold_dir not in f.parents],
-        key=lambda f: f.name.upper(), reverse=True
-    )
-    ok(f"Generiere Galerie mit {len(source_images)} lokalen Bildern...")
+    local_images = {}   # {nr}.jpg (lowercase) -> Pfad des lokalen BL-Bilds
+    for f in gallery_path.rglob("*.jpg"):
+        if (is_valid(f.name, order_prefix)[0]
+                and "galerie-output" not in f.parts
+                and sold_dir not in f.parents):
+            local_images[f.name.lower()] = f
 
-    log("Kopiere Bilder nach public/images/ ...")
-    copied = 0
-    for img in source_images:
-        target = images_out / img.name.lower()
-        if not target.exists() or target.stat().st_mtime < img.stat().st_mtime:
-            shutil.copy2(str(img), str(target))
-            copied += 1
-    ok(f"{copied} Bilder neu kopiert ({len(source_images)} gesamt)")
-
-    # c) Fehlende Cover von cover_base_url nachladen
+    # b) cover.wdeu.de zuerst (maßgeblich) — ETag-Cache verhindert Re-Downloads
+    #    unveränderter Cover (conditional GET → 304 statt erneutem Transfer).
+    cover_hits = set()
     if cover_base_url:
-        missing = [
-            orderNo for orderNo in article_info.keys()
-            if not (images_out / (orderNo.lower() + '.jpg')).exists()
-        ]
-        downloaded = 0
-        for orderNo in missing:
-            url = cover_base_url.rstrip('/') + '/' + orderNo.lower() + '.jpg'
+        cache_dir = output_path.parent / ".cover-cache"
+        cache_dir.mkdir(exist_ok=True)
+        log(f"Prüfe cover.wdeu.de für {len(article_info)} Artikel (Vorrang) ...")
+        from_cover = 0
+        for orderNo in article_info.keys():
+            fname     = orderNo.lower() + '.jpg'
+            url       = cover_base_url.rstrip('/') + '/' + fname
+            cache_img = cache_dir / fname
+            etag_file = cache_dir / (orderNo.lower() + '.etag')
+            headers   = {}
+            if cache_img.exists() and etag_file.exists():
+                headers['If-None-Match'] = etag_file.read_text().strip()
             try:
-                r = requests.get(url, timeout=10)
-                if r.status_code == 200:
-                    (images_out / (orderNo.lower() + '.jpg')).write_bytes(r.content)
-                    warn(f"Cover-Download: {orderNo}")
-                    downloaded += 1
+                r = requests.get(url, headers=headers, timeout=10)
+                if r.status_code == 304 and cache_img.exists():
+                    shutil.copy2(str(cache_img), str(images_out / fname))
+                    cover_hits.add(fname); from_cover += 1
+                elif r.status_code == 200:
+                    cache_img.write_bytes(r.content)
+                    if r.headers.get('ETag'):
+                        etag_file.write_text(r.headers['ETag'])
+                    shutil.copy2(str(cache_img), str(images_out / fname))
+                    cover_hits.add(fname); from_cover += 1
+                # 404 → kein cover.wdeu.de-Cover → lokales BL-Bild greift unten
             except Exception:
                 pass
-        if downloaded:
-            ok(f"{downloaded} Cover von {cover_base_url} nachgeladen")
+        ok(f"{from_cover} Cover von cover.wdeu.de (Vorrang)")
+
+    # c) Lokale BL-Bilder für alles, was cover.wdeu.de NICHT geliefert hat
+    log("Ergänze mit lokalen BL-Bildern ...")
+    from_local = 0
+    for fname, src in local_images.items():
+        if fname in cover_hits:
+            continue   # cover.wdeu.de hat Vorrang, lokales Bild überspringen
+        shutil.copy2(str(src), str(images_out / fname))
+        from_local += 1
+    ok(f"Galerie-Bilder: {len(cover_hits)} von cover.wdeu.de + {from_local} lokal "
+       f"= {len(cover_hits) + from_local} gesamt")
 
     # d) images_out neu scannen (enthält jetzt lokale + nachgeladene Cover)
     images = sorted(
