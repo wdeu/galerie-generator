@@ -631,9 +631,9 @@ def generate_html(gallery_path, output_path, article_info=None, wp_links=None, o
 
     .item img {{
       width: 100%;
-      height: auto;
+      aspect-ratio: 2 / 3;   /* feste Kachel für alle Cover, formatunabhängig */
+      object-fit: cover;      /* füllt randlos, beschneidet minimal am Rand */
       display: block;
-      object-fit: cover;
     }}
 
     /* ── Thumb-Wrapper für Preis-Overlay ── */
