@@ -54,8 +54,9 @@ api_key = DEIN_API_KEY_HIER
 # BN  = Einzeltitel-Inserat
 # BLX = CSV-Massenupload
 # Booklooker erlaubt eigene Präfixe – trage hier alle ein die du verwendest.
-# Beispiel: order_prefix = BN,BLX,MGB
-order_prefix = BN,BLX
+# Hinweis: Präfixe werden automatisch erkannt (Buchstaben + Ziffern), diese
+# Zeile ist nur noch informativ und muss nicht gepflegt werden.
+# order_prefix = BN,BLX
 
 # Optional: Basis-URL für Cover. Hat in der Galerie VORRANG vor dem lokalen
 # BL-Bilder-Download: liegt dort {Nr}.jpg, nimmt die Galerie dieses (z.B. ein
@@ -291,17 +292,16 @@ def get_wp_links(wp_url=None):
 # BILDER BEREINIGEN
 # ============================================================
 def is_valid(filename, order_prefix=None):
-    """Prüfe ob Dateiname gültig ist (kein _2, _3 Suffix, passt zu Präfix-Liste)"""
-    if order_prefix is None:
-        order_prefix = ['BN', 'BLX']
+    """Prüfe ob Dateiname eine Bestellnummer ist (kein _2, _3 Suffix).
+    Präfix-agnostisch: beliebige Buchstaben-Abkürzung + Ziffern (BN, BLX, ISB, …) —
+    keine feste Präfix-Liste nötig (order_prefix wird ignoriert, nur noch für
+    Rückwärtskompatibilität der Signatur)."""
     stem = Path(filename).stem
     # Mehrfachbild-Suffix (_2, _3 ...) → ungültig
     if re.search(r'_\d+$', stem):
         return False, None
-    # Präfix-Pattern dynamisch aufbauen
-    pattern = r'^(' + '|'.join(re.escape(p) for p in order_prefix) + r')\d+'
-    m = re.match(pattern, stem, re.IGNORECASE)
-    if m:
+    # alphanumerisch mit mind. 1 Buchstabe + 1 Ziffer (jede Bestellnummer)
+    if re.match(r'^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9]+$', stem):
         return True, stem.upper()
     return False, None
 
